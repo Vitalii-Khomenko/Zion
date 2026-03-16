@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Rounded Background Box (The same 15% alpha as in app) -->
+    <path
+        android:pathData="M28,24 h52 c6.6,0 12,5.4 12,12 v48 c0,6.6 -5.4,12 -12,12 h-52 c-6.6,0 -12,-5.4 -12,-12 v-48 c0,-6.6 5.4,-12 12,-12 Z"
+        android:fillAlpha="0.15">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="16"
+                android:startY="24"
+                android:endX="92"
+                android:endY="96"
+                android:type="linear">
+                <item android:offset="0" android:color="#00E5FF" />
+                <item android:offset="1" android:color="#D500F9" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Stylized Bold 'Z' (Centered and prominent) -->
+    <path
+        android:fillColor="#00E5FF"
+        android:pathData="M34,36 h40 v8 H46 l30,24 v10 H34 v-8 h30 L34,46 V36 Z" />
+
+</vector>
