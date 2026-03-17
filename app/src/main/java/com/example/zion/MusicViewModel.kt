@@ -344,7 +344,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
             if (directoryUri.scheme == "content") {
                 context.contentResolver.takePersistableUriPermission(
                     directoryUri,
-                    Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
                 )
             }
             prefs.edit().putString("last_directory_uri", directoryUri.toString()).apply()
@@ -440,7 +440,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                     }
                     "content" -> {
                         try {
-                            context.contentResolver.delete(track.uri, null, null) > 0
+                            android.provider.DocumentsContract.deleteDocument(context.contentResolver, track.uri)
                         } catch (e: Exception) {
                             false
                         }

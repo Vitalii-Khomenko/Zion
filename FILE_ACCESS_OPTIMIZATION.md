@@ -142,14 +142,14 @@ Benutzer tippt auf FAB (Ordner-Icon)
 
 ## 📊 FEATURE-COMPARISON
 
-| Feature | Vorher | Nachher |
-|---------|--------|---------|
-| **Permission-Check** | Jedes Mal | Einmalig |
-| **Button Anzeige** | Immer sichtbar | Nur wenn nötig |
-| **Automatisches Laden** | Nein | ✅ Ja |
-| **SharedPreferences** | Begrenzt | ✅ Umfassend |
-| **User Experience** | Nervend | ✅ Smooth |
-| **Performance** | Mittelmäßig | ✅ Optimiert |
+| Feature                 | Vorher         | Nachher        |
+|-------------------------|----------------|----------------|
+| **Permission-Check**    | Jedes Mal      | Einmalig       |
+| **Button Anzeige**      | Immer sichtbar | Nur wenn nötig |
+| **Automatisches Laden** | Nein           | ✅ Ja           |
+| **SharedPreferences**   | Begrenzt       | ✅ Umfassend    |
+| **User Experience**     | Nervend        | ✅ Smooth       |
+| **Performance**         | Mittelmäßig    | ✅ Optimiert    |
 
 ---
 

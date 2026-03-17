@@ -1,10 +1,8 @@
 package com.example.zion
 
 import android.app.PendingIntent
-import android.app.RecoverableSecurityException
 import android.content.Context
 import android.content.Intent
-import android.content.IntentSender
 import android.graphics.BitmapFactory
 import android.media.AudioManager
 import android.media.MediaMetadataRetriever
@@ -18,13 +16,11 @@ import android.os.VibratorManager
 import android.provider.MediaStore
 import android.provider.Settings
 import android.util.Log
-import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.documentfile.provider.DocumentFile
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -238,9 +234,9 @@ fun PlayerBar(
     val view = LocalView.current
     
     val speeds = listOf(0.5f, 1.0f, 1.5f, 2.0f)
-    var currentSpeedIndex by remember { mutableStateOf(1) }
+    var currentSpeedIndex by remember { mutableIntStateOf(1) }
 
-    var currentVolumePercent by remember { mutableStateOf(0) }
+    var currentVolumePercent by remember { mutableIntStateOf(0) }
     val audioManager = remember { context.getSystemService(Context.AUDIO_SERVICE) as AudioManager }
 
     LaunchedEffect(Unit) {
@@ -464,11 +460,10 @@ fun TrackItem(
 ) {
     val context = LocalContext.current
     var artworkBitmap by remember(track.uri) { mutableStateOf<android.graphics.Bitmap?>(null) }
-    var swipeOffset by remember { mutableStateOf(0f) }
+    var swipeOffset by remember { mutableFloatStateOf(0f) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
     val maxSwipe = 120f
     val minSwipe = -120f
-    val toast = remember<Toast> { Toast.makeText(context, "Datei konnte nicht gelöscht werden!", Toast.LENGTH_SHORT) } // explizite Typangabe für remember: Toast
 
     LaunchedEffect(track.uri) {
         withContext(Dispatchers.IO) {
@@ -615,60 +610,7 @@ fun TrackItem(
                     onClick = {
                         showDeleteConfirm = false
                         swipeOffset = 0f
-                        // Delete the file
-                        var deleted = false
-                        val TAG = "TrackDelete"
-                        try {
-                            // Versuche zuerst ContentResolver für alle URIs
-                            val rows = context.contentResolver.delete(track.uri, null, null)
-                            deleted = rows > 0
-                            if (!deleted) {
-                                Log.d(TAG, "ContentResolver.delete fehlgeschlagen, versuche DocumentFile")
-                                // Fallback: DocumentFile für SAF URIs
-                                val documentFile = DocumentFile.fromSingleUri(context, track.uri)
-                                if (documentFile != null && documentFile.exists()) {
-                                    deleted = documentFile.delete()
-                                    if (deleted) {
-                                        Log.d(TAG, "DocumentFile.delete erfolgreich")
-                                    } else {
-                                        Log.e(TAG, "DocumentFile.delete fehlgeschlagen")
-                                    }
-                                } else {
-                                    Log.e(TAG, "DocumentFile konnte nicht erstellt werden oder existiert nicht")
-                                }
-                            } else {
-                                Log.d(TAG, "ContentResolver.delete erfolgreich")
-                            }
-                        } catch (e: RecoverableSecurityException) {
-                            Log.w(TAG, "RecoverableSecurityException: ${e.message}")
-                            // Bei Android 11+: Benutzer zur Wiederherstellung auffordern
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                                try {
-                                    // Try to get the IntentSender from the recoverableSecurityException
-                                    val recoveryAction = e.userAction
-                                    // Use reflection to access the intentSender field
-                                    val intentSenderField = recoveryAction.javaClass.getDeclaredField("intentSender")
-                                    intentSenderField.isAccessible = true
-                                    val intentSender = intentSenderField.get(recoveryAction) as IntentSender
-                                    (context as ComponentActivity).startIntentSenderForResult(intentSender, 1001, null, 0, 0, 0, null)
-                                    Log.d(TAG, "RecoverableSecurityException Intent gestartet")
-                                } catch (ex: Exception) {
-                                    Log.e(TAG, "Fehler beim Starten des RecoverableSecurityException Intents: ${ex.message}", ex)
-                                    toast.show()
-                                }
-                            } else {
-                                Log.e(TAG, "RecoverableSecurityException auf älterer Android-Version: ${e.message}", e)
-                                toast.show()
-                            }
-                        } catch (e: Exception) {
-                            Log.e(TAG, "Unerwarteter Fehler beim Löschen: ${e.message}", e)
-                            deleted = false
-                        }
-                        if (!deleted) {
-                            toast.show()
-                        } else {
-                            onDelete() // Nur bei Erfolg aus Liste entfernen
-                        }
+                        onDelete()
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD32F2F))
                 ) {
