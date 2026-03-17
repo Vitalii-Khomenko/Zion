@@ -1,7 +1,10 @@
 package com.example.zion
 
+import android.app.PendingIntent
+import android.app.RecoverableSecurityException
 import android.content.Context
 import android.content.Intent
+import android.content.IntentSender
 import android.graphics.BitmapFactory
 import android.media.AudioManager
 import android.media.MediaMetadataRetriever
@@ -12,12 +15,16 @@ import android.os.Environment
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
+import android.provider.MediaStore
 import android.provider.Settings
+import android.util.Log
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.documentfile.provider.DocumentFile
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -448,10 +455,10 @@ fun TrackList(
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun TrackItem(
-    track: Track, 
-    isCurrent: Boolean, 
-    isCompleted: Boolean, 
-    onClick: () -> Unit, 
+    track: Track,
+    isCurrent: Boolean,
+    isCompleted: Boolean,
+    onClick: () -> Unit,
     onLongClick: () -> Unit,
     onDelete: () -> Unit
 ) {
@@ -459,8 +466,9 @@ fun TrackItem(
     var artworkBitmap by remember(track.uri) { mutableStateOf<android.graphics.Bitmap?>(null) }
     var swipeOffset by remember { mutableStateOf(0f) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
-    
     val maxSwipe = 120f
+    val minSwipe = -120f
+    val toast = remember<Toast> { Toast.makeText(context, "Datei konnte nicht gelöscht werden!", Toast.LENGTH_SHORT) } // explizite Typangabe für remember: Toast
 
     LaunchedEffect(track.uri) {
         withContext(Dispatchers.IO) {
@@ -490,16 +498,20 @@ fun TrackItem(
             .pointerInput(Unit) {
                 detectHorizontalDragGestures(
                     onDragEnd = {
-                        // Snap to delete position if swiped more than 30% of max
-                        swipeOffset = if (swipeOffset > maxSwipe * 0.3f) {
-                            maxSwipe
+                        // Snap to delete position if swiped mehr als 30% von rechts nach links
+                        swipeOffset = if (swipeOffset < minSwipe * 0.3f) {
+                            minSwipe
                         } else {
                             0f
+                        }
+                        // Wenn Swipe im Delete-Bereich endet, Dialog zeigen
+                        if (swipeOffset == minSwipe) {
+                            showDeleteConfirm = true
                         }
                     },
                     onHorizontalDrag = { change, dragAmount ->
                         change.consume()
-                        swipeOffset = (swipeOffset + dragAmount).coerceIn(0f, maxSwipe)
+                        swipeOffset = (swipeOffset + dragAmount).coerceIn(minSwipe, 0f)
                     }
                 )
             }
@@ -509,17 +521,17 @@ fun TrackItem(
             modifier = Modifier
                 .fillMaxSize()
                 .background(Color(0xFFD32F2F)) // Red color
-                .align(Alignment.CenterEnd)
-                .padding(end = 16.dp),
-            contentAlignment = Alignment.CenterEnd
+                .align(Alignment.CenterStart)
+                .padding(start = 0.dp),
+            contentAlignment = Alignment.Center
         ) {
-            if (swipeOffset > 20f) {
+            if (swipeOffset < -20f) {
                 Icon(
                     Icons.Default.Delete,
                     contentDescription = "Delete",
                     tint = Color.White,
                     modifier = Modifier
-                        .size(24.dp)
+                        .size(32.dp)
                         .clickable {
                             showDeleteConfirm = true
                         }
@@ -596,34 +608,71 @@ fun TrackItem(
     if (showDeleteConfirm) {
         AlertDialog(
             onDismissRequest = { showDeleteConfirm = false },
-            title = { Text("Delete Song") },
-            text = { Text("Permanently delete '${track.title}' from your device?") },
+            title = { Text("Lied unwiderruflich löschen?") },
+            text = { Text("Das Lied '${track.title}' wird endgültig vom Gerät gelöscht.") },
             confirmButton = {
                 Button(
                     onClick = {
                         showDeleteConfirm = false
                         swipeOffset = 0f
                         // Delete the file
+                        var deleted = false
+                        val TAG = "TrackDelete"
                         try {
-                            when (track.uri.scheme) {
-                                "file" -> {
-                                    val file = File(track.uri.path ?: "")
-                                    if (file.exists()) {
-                                        file.delete()
+                            // Versuche zuerst ContentResolver für alle URIs
+                            val rows = context.contentResolver.delete(track.uri, null, null)
+                            deleted = rows > 0
+                            if (!deleted) {
+                                Log.d(TAG, "ContentResolver.delete fehlgeschlagen, versuche DocumentFile")
+                                // Fallback: DocumentFile für SAF URIs
+                                val documentFile = DocumentFile.fromSingleUri(context, track.uri)
+                                if (documentFile != null && documentFile.exists()) {
+                                    deleted = documentFile.delete()
+                                    if (deleted) {
+                                        Log.d(TAG, "DocumentFile.delete erfolgreich")
+                                    } else {
+                                        Log.e(TAG, "DocumentFile.delete fehlgeschlagen")
                                     }
+                                } else {
+                                    Log.e(TAG, "DocumentFile konnte nicht erstellt werden oder existiert nicht")
                                 }
-                                "content" -> {
-                                    context.contentResolver.delete(track.uri, null, null)
+                            } else {
+                                Log.d(TAG, "ContentResolver.delete erfolgreich")
+                            }
+                        } catch (e: RecoverableSecurityException) {
+                            Log.w(TAG, "RecoverableSecurityException: ${e.message}")
+                            // Bei Android 11+: Benutzer zur Wiederherstellung auffordern
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                                try {
+                                    // Try to get the IntentSender from the recoverableSecurityException
+                                    val recoveryAction = e.userAction
+                                    // Use reflection to access the intentSender field
+                                    val intentSenderField = recoveryAction.javaClass.getDeclaredField("intentSender")
+                                    intentSenderField.isAccessible = true
+                                    val intentSender = intentSenderField.get(recoveryAction) as IntentSender
+                                    (context as ComponentActivity).startIntentSenderForResult(intentSender, 1001, null, 0, 0, 0, null)
+                                    Log.d(TAG, "RecoverableSecurityException Intent gestartet")
+                                } catch (ex: Exception) {
+                                    Log.e(TAG, "Fehler beim Starten des RecoverableSecurityException Intents: ${ex.message}", ex)
+                                    toast.show()
                                 }
+                            } else {
+                                Log.e(TAG, "RecoverableSecurityException auf älterer Android-Version: ${e.message}", e)
+                                toast.show()
                             }
                         } catch (e: Exception) {
-                            e.printStackTrace()
+                            Log.e(TAG, "Unerwarteter Fehler beim Löschen: ${e.message}", e)
+                            deleted = false
                         }
-                        onDelete()
+                        if (!deleted) {
+                            toast.show()
+                        } else {
+                            onDelete() // Nur bei Erfolg aus Liste entfernen
+                        }
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD32F2F))
                 ) {
-                    Text("Delete", color = Color.White)
+                    Text("Ja", color = Color.White)
                 }
             },
             dismissButton = {
@@ -634,7 +683,7 @@ fun TrackItem(
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = Color.Gray)
                 ) {
-                    Text("Cancel")
+                    Text("Abbrechen", color = Color.White)
                 }
             }
         )
