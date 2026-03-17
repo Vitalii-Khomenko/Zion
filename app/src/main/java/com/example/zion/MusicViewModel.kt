@@ -234,6 +234,26 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun loadMainMusicFolder() {
+        // Automatisches Laden des letzten Musik-Ordners beim Start
+        viewModelScope.launch {
+            _isLoading.value = true
+            val lastPath = prefs.getString("last_directory_path", null)
+            
+            // Wenn kein gespeicherter Pfad existiert, nutze Standard Musik-Ordner
+            val folderPath = lastPath ?: Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC).absolutePath
+            
+            // Speichere den Pfad für nächsten Start
+            prefs.edit().putString("last_directory_path", folderPath).apply()
+            
+            val scannedTracks = withContext(Dispatchers.IO) {
+                recursiveScan(File(folderPath))
+            }
+            _tracks.value = scannedTracks
+            _isLoading.value = false
+        }
+    }
+
     fun scanLocalPath(file: File) {
         prefs.edit().putString("last_directory_path", file.absolutePath).apply()
         viewModelScope.launch {

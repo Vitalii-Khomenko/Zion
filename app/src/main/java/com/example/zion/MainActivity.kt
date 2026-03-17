@@ -26,6 +26,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -50,9 +51,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.layout.offset
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
@@ -69,11 +68,11 @@ import com.example.zion.ui.theme.SurfaceDark
 import com.example.zion.ui.theme.ZionTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import java.util.Locale
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
 import java.util.Locale
 
 class MainActivity : ComponentActivity() {
@@ -107,10 +106,18 @@ fun MainScreen(viewModel: MusicViewModel = viewModel()) {
     val duration by viewModel.duration.collectAsState()
     val completedTracks by viewModel.completedTracks.collectAsState()
 
+    // Einmaliger Permission-Check beim App-Start
     val hasFullAccess = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
         Environment.isExternalStorageManager()
     } else {
         true
+    }
+
+    // Auto-load beim Start wenn Berechtigung vorhanden
+    LaunchedEffect(hasFullAccess) {
+        if (hasFullAccess && tracks.isEmpty()) {
+            viewModel.loadMainMusicFolder()
+        }
     }
 
     val launcher = rememberLauncherForActivityResult(
@@ -434,7 +441,6 @@ fun TrackList(
                 onLongClick = { onTrackLongClick(track) },
                 onDelete = { onTrackDelete(track) }
             )
-            )
         }
     }
 }
@@ -601,7 +607,7 @@ fun TrackItem(
                         try {
                             when (track.uri.scheme) {
                                 "file" -> {
-                                    val file = android.os.File(track.uri.path ?: "")
+                                    val file = File(track.uri.path ?: "")
                                     if (file.exists()) {
                                         file.delete()
                                     }
@@ -657,6 +663,7 @@ fun EmptyState(hasFullAccess: Boolean, isLoading: Boolean, onGrantAccess: () -> 
         if (isLoading) {
             CircularProgressIndicator(color = CyanAccent)
         } else {
+            // Nur Button zeigen wenn KEINE Berechtigung vorhanden ist
             if (!hasFullAccess) {
                 Button(onClick = onGrantAccess, colors = ButtonDefaults.buttonColors(containerColor = CyanAccent), shape = RoundedCornerShape(8.dp)) {
                     Icon(Icons.Default.Security, contentDescription = null, tint = Color.Black)
@@ -664,9 +671,8 @@ fun EmptyState(hasFullAccess: Boolean, isLoading: Boolean, onGrantAccess: () -> 
                     Text("GRANT FULL STORAGE ACCESS", color = Color.Black, fontWeight = FontWeight.Bold)
                 }
             } else {
-                Button(onClick = onRefresh, colors = ButtonDefaults.buttonColors(containerColor = CyanAccent.copy(alpha = 0.2f)), shape = RoundedCornerShape(8.dp)) {
-                    Text("SCAN MUSIC LIBRARY", color = CyanAccent)
-                }
+                // Mit Berechtigung: Text für manuellen Ordner-Zugriff
+                Text(text = "LOADING MUSIC...", style = MaterialTheme.typography.labelLarge.copy(letterSpacing = 2.sp, color = CyanAccent))
             }
             Spacer(modifier = Modifier.height(24.dp))
             Text(text = "OR SELECT A FOLDER MANUALLY", style = MaterialTheme.typography.labelLarge.copy(letterSpacing = 2.sp, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.4f)))
