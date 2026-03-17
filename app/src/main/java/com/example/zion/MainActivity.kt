@@ -22,10 +22,10 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
-
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -39,6 +39,7 @@ import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -49,11 +50,14 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.offset
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
@@ -61,9 +65,11 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.zion.model.Track
 import com.example.zion.ui.theme.CyanAccent
 import com.example.zion.ui.theme.VioletAccent
+import com.example.zion.ui.theme.SurfaceDark
 import com.example.zion.ui.theme.ZionTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import java.util.Locale
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -172,7 +178,8 @@ fun MainScreen(viewModel: MusicViewModel = viewModel()) {
                     onTrackLongClick = { 
                         vibrate(context)
                         viewModel.toggleTrackCompleted(it)
-                    }
+                    },
+                    onTrackDelete = { viewModel.deleteTrack(it) }
                 )
                 
                 if (isLoading) {
@@ -407,7 +414,8 @@ fun TrackList(
     currentTrack: Track?,
     completedTracks: Set<String>,
     onTrackClick: (Track) -> Unit,
-    onTrackLongClick: (Track) -> Unit
+    onTrackLongClick: (Track) -> Unit,
+    onTrackDelete: (Track) -> Unit
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -423,7 +431,9 @@ fun TrackList(
                 isCurrent = track == currentTrack,
                 isCompleted = completedTracks.contains(track.uri.toString()),
                 onClick = { onTrackClick(track) },
-                onLongClick = { onTrackLongClick(track) }
+                onLongClick = { onTrackLongClick(track) },
+                onDelete = { onTrackDelete(track) }
+            )
             )
         }
     }
@@ -431,9 +441,20 @@ fun TrackList(
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun TrackItem(track: Track, isCurrent: Boolean, isCompleted: Boolean, onClick: () -> Unit, onLongClick: () -> Unit) {
+fun TrackItem(
+    track: Track, 
+    isCurrent: Boolean, 
+    isCompleted: Boolean, 
+    onClick: () -> Unit, 
+    onLongClick: () -> Unit,
+    onDelete: () -> Unit
+) {
     val context = LocalContext.current
     var artworkBitmap by remember(track.uri) { mutableStateOf<android.graphics.Bitmap?>(null) }
+    var swipeOffset by remember { mutableStateOf(0f) }
+    var showDeleteConfirm by remember { mutableStateOf(false) }
+    
+    val maxSwipe = 120f
 
     LaunchedEffect(track.uri) {
         withContext(Dispatchers.IO) {
@@ -457,65 +478,160 @@ fun TrackItem(track: Track, isCurrent: Boolean, isCompleted: Boolean, onClick: (
         }
     }
 
-    Row(
+    Box(
         modifier = Modifier
             .fillMaxWidth()
-            .combinedClickable(
-                onClick = onClick,
-                onLongClick = onLongClick
-            )
-            .padding(vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically
+            .pointerInput(Unit) {
+                detectHorizontalDragGestures(
+                    onDragEnd = {
+                        // Snap to delete position if swiped more than 30% of max
+                        swipeOffset = if (swipeOffset > maxSwipe * 0.3f) {
+                            maxSwipe
+                        } else {
+                            0f
+                        }
+                    },
+                    onHorizontalDrag = { change, dragAmount ->
+                        change.consume()
+                        swipeOffset = (swipeOffset + dragAmount).coerceIn(0f, maxSwipe)
+                    }
+                )
+            }
     ) {
+        // Delete background
         Box(
             modifier = Modifier
-                .size(48.dp)
-                .clip(RoundedCornerShape(4.dp))
-                .background(brush = if (isCurrent) Brush.linearGradient(listOf(Color.White, Color.White)) else Brush.linearGradient(listOf(CyanAccent, VioletAccent)), alpha = if (isCurrent) 1.0f else 0.1f),
-            contentAlignment = Alignment.Center
+                .fillMaxSize()
+                .background(Color(0xFFD32F2F)) // Red color
+                .align(Alignment.CenterEnd)
+                .padding(end = 16.dp),
+            contentAlignment = Alignment.CenterEnd
         ) {
-            if (artworkBitmap != null) {
-                Image(
-                    bitmap = artworkBitmap!!.asImageBitmap(), 
-                    contentDescription = null, 
-                    modifier = Modifier.fillMaxSize(), 
-                    contentScale = ContentScale.Crop
-                )
-            } else {
+            if (swipeOffset > 20f) {
                 Icon(
-                    Icons.Default.MusicNote, 
-                    contentDescription = null, 
-                    tint = if (isCurrent) Color.Black else if (track.isCueTrack) VioletAccent else CyanAccent, 
-                    modifier = Modifier.size(24.dp)
+                    Icons.Default.Delete,
+                    contentDescription = "Delete",
+                    tint = Color.White,
+                    modifier = Modifier
+                        .size(24.dp)
+                        .clickable {
+                            showDeleteConfirm = true
+                        }
                 )
             }
         }
-        
-        Spacer(modifier = Modifier.width(16.dp))
-        
-        Column {
-            Text(
-                text = track.title.uppercase(), 
-                style = MaterialTheme.typography.bodyLarge.copy(
-                    fontWeight = FontWeight.Medium, 
-                    letterSpacing = 1.sp, 
-                    color = if (isCurrent) CyanAccent 
-                            else if (isCompleted) Color.White.copy(alpha = 0.35f) 
-                            else MaterialTheme.colorScheme.onBackground
-                ), 
-                maxLines = 1
-            )
-            Text(
-                text = (track.artist ?: "UNKNOWN").uppercase(), 
-                style = MaterialTheme.typography.bodySmall.copy(
-                    letterSpacing = 1.sp, 
-                    color = if (isCurrent) CyanAccent.copy(alpha = 0.7f) 
-                            else if (isCompleted) Color.White.copy(alpha = 0.25f) 
-                            else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f)
-                ), 
-                maxLines = 1
-            )
+
+        // Track item
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .offset { IntOffset(swipeOffset.toInt(), 0) }
+                .combinedClickable(
+                    onClick = onClick,
+                    onLongClick = onLongClick
+                )
+                .padding(vertical = 8.dp)
+                .background(SurfaceDark),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(brush = if (isCurrent) Brush.linearGradient(listOf(Color.White, Color.White)) else Brush.linearGradient(listOf(CyanAccent, VioletAccent)), alpha = if (isCurrent) 1.0f else 0.1f),
+                contentAlignment = Alignment.Center
+            ) {
+                if (artworkBitmap != null) {
+                    Image(
+                        bitmap = artworkBitmap!!.asImageBitmap(), 
+                        contentDescription = null, 
+                        modifier = Modifier.fillMaxSize(), 
+                        contentScale = ContentScale.Crop
+                    )
+                } else {
+                    Icon(
+                        Icons.Default.MusicNote, 
+                        contentDescription = null, 
+                        tint = if (isCurrent) Color.Black else if (track.isCueTrack) VioletAccent else CyanAccent, 
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+            }
+            
+            Spacer(modifier = Modifier.width(16.dp))
+            
+            Column {
+                Text(
+                    text = track.title.uppercase(), 
+                    style = MaterialTheme.typography.bodyLarge.copy(
+                        fontWeight = FontWeight.Medium, 
+                        letterSpacing = 1.sp, 
+                        color = if (isCurrent) CyanAccent 
+                                else if (isCompleted) Color.White.copy(alpha = 0.35f) 
+                                else MaterialTheme.colorScheme.onBackground
+                    ), 
+                    maxLines = 1
+                )
+                Text(
+                    text = (track.artist ?: "UNKNOWN").uppercase(), 
+                    style = MaterialTheme.typography.bodySmall.copy(
+                        letterSpacing = 1.sp, 
+                        color = if (isCurrent) CyanAccent.copy(alpha = 0.7f) 
+                                else if (isCompleted) Color.White.copy(alpha = 0.25f) 
+                                else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f)
+                    ), 
+                    maxLines = 1
+                )
+            }
         }
+    }
+
+    // Delete confirmation dialog
+    if (showDeleteConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirm = false },
+            title = { Text("Delete Song") },
+            text = { Text("Permanently delete '${track.title}' from your device?") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showDeleteConfirm = false
+                        swipeOffset = 0f
+                        // Delete the file
+                        try {
+                            when (track.uri.scheme) {
+                                "file" -> {
+                                    val file = android.os.File(track.uri.path ?: "")
+                                    if (file.exists()) {
+                                        file.delete()
+                                    }
+                                }
+                                "content" -> {
+                                    context.contentResolver.delete(track.uri, null, null)
+                                }
+                            }
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                        }
+                        onDelete()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD32F2F))
+                ) {
+                    Text("Delete", color = Color.White)
+                }
+            },
+            dismissButton = {
+                Button(
+                    onClick = {
+                        showDeleteConfirm = false
+                        swipeOffset = 0f
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color.Gray)
+                ) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 }
 

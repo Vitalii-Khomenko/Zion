@@ -403,6 +403,48 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         controller?.seekToPreviousMediaItem()
     }
 
+    fun deleteTrack(track: Track) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                // Stop playback if this track is currently playing
+                if (_currentTrack.value == track) {
+                    controller?.stop()
+                    _currentTrack.value = null
+                }
+
+                val context = getApplication<Application>()
+                val deleted = when (track.uri.scheme) {
+                    "file" -> {
+                        val file = File(track.uri.path ?: "")
+                        if (file.exists()) file.delete() else false
+                    }
+                    "content" -> {
+                        try {
+                            context.contentResolver.delete(track.uri, null, null) > 0
+                        } catch (e: Exception) {
+                            false
+                        }
+                    }
+                    else -> false
+                }
+
+                if (deleted) {
+                    // Remove from tracks list
+                    val updatedTracks = _tracks.value.filter { it.uri.toString() != track.uri.toString() }
+                    _tracks.value = updatedTracks
+
+                    // Remove from completed tracks if it exists
+                    val currentSet = _completedTracks.value.toMutableSet()
+                    currentSet.remove(track.uri.toString())
+                    _completedTracks.value = currentSet
+                    prefs.edit().putStringSet("completed_tracks_paths", currentSet).apply()
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
     fun shuffle() {
         val currentList = _tracks.value
         if (currentList.isNotEmpty()) {
