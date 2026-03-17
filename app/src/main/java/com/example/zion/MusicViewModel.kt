@@ -246,7 +246,10 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private fun recursiveScan(file: File): List<Track> {
+    private fun recursiveScan(file: File, depth: Int = 0): List<Track> {
+        // Prevent infinite recursion on deeply nested directories
+        if (depth > 20) return emptyList()
+        
         val trackList = mutableListOf<Track>()
         val files = file.listFiles() ?: return emptyList()
         
@@ -255,7 +258,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
 
         files.forEach { f ->
             if (f.isDirectory) {
-                trackList.addAll(recursiveScan(f))
+                trackList.addAll(recursiveScan(f, depth + 1))
             } else {
                 val ext = f.extension.lowercase()
                 if (supportedExtensions.contains(ext)) {
@@ -428,7 +431,14 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         controller?.stop()
         val intent = Intent(getApplication<Application>(), PlaybackService::class.java)
         getApplication<Application>().stopService(intent)
-        System.exit(0)
+        // Request activity termination instead of forcefully exiting
+        try {
+            val context = getApplication<Application>() as? android.app.Activity
+            context?.finishAffinity()
+        } catch (e: Exception) {
+            // Fallback for non-activity context
+            Runtime.getRuntime().exit(0)
+        }
     }
 
     override fun onCleared() {

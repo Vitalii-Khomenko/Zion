@@ -417,7 +417,7 @@ fun TrackList(
         item {
             Text(text = "LIBRARY", style = MaterialTheme.typography.labelMedium.copy(letterSpacing = 4.sp, color = CyanAccent), modifier = Modifier.padding(bottom = 16.dp))
         }
-        items(tracks) { track ->
+        items(tracks, key = { it.uri.toString() + "_" + it.startTimeMs }) { track ->
             TrackItem(
                 track = track, 
                 isCurrent = track == currentTrack,
@@ -443,7 +443,11 @@ fun TrackItem(track: Track, isCurrent: Boolean, isCompleted: Boolean, onClick: (
                 val art = retriever.embeddedPicture
                 if (art != null) {
                     val bitmap = BitmapFactory.decodeByteArray(art, 0, art.size)
-                    artworkBitmap = android.graphics.Bitmap.createScaledBitmap(bitmap, 150, 150, true)
+                    if (bitmap != null) {
+                        val scaledBitmap = android.graphics.Bitmap.createScaledBitmap(bitmap, 150, 150, true)
+                        artworkBitmap = scaledBitmap
+                        if (bitmap != scaledBitmap) bitmap.recycle()
+                    }
                 }
             } catch (e: Exception) {
                 artworkBitmap = null

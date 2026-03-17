@@ -149,9 +149,11 @@ class PlaybackService : MediaLibraryService() {
                 )
                 
                 val artworkData = session.player.mediaMetadata.artworkData
-                if (artworkData != null) {
+                if (artworkData != null && artworkData.isNotEmpty()) {
                     val bitmap = BitmapFactory.decodeByteArray(artworkData, 0, artworkData.size)
-                    mediaNotification.notification.largeIcon = bitmap
+                    if (bitmap != null) {
+                        mediaNotification.notification.largeIcon = bitmap
+                    }
                 }
                 
                 mediaNotification.notification.color = 0xFF00E5FF.toInt()
